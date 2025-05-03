@@ -74,18 +74,33 @@ class Database:
             self.session.commit()
         
         for index, row in data.iterrows():
-            # Convert numpy types to Python native types
-            time_interval = TimeInterval(
-                symbol_id=symbol_obj.id,
-                start_time=index,
-                end_time=index + timedelta(minutes=1),
-                open=float(row['Open']),
-                high=float(row['High']),
-                low=float(row['Low']),
-                close=float(row['Close']),
-                volume=int(row['Volume'])
-            )
-            self.session.add(time_interval)
+            # Check if this time interval already exists
+            existing = self.session.query(TimeInterval).filter(
+                TimeInterval.symbol_id == symbol_obj.id,
+                TimeInterval.start_time == index
+            ).first()
+            
+            if existing:
+                # Update existing record
+                existing.open = float(row['Open'])
+                existing.high = float(row['High'])
+                existing.low = float(row['Low'])
+                existing.close = float(row['Close'])
+                existing.volume = int(row['Volume'])
+            else:
+                # Create new record
+                time_interval = TimeInterval(
+                    symbol_id=symbol_obj.id,
+                    start_time=index,
+                    end_time=index + timedelta(minutes=1),
+                    open=float(row['Open']),
+                    high=float(row['High']),
+                    low=float(row['Low']),
+                    close=float(row['Close']),
+                    volume=int(row['Volume'])
+                )
+                self.session.add(time_interval)
+        
         self.session.commit()
     
     def get_time_intervals(self, symbol, start_date=None, end_date=None):
