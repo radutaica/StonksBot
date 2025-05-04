@@ -94,5 +94,65 @@ class TestTechnicalAnalysis(unittest.TestCase):
             print(f"  EMA(20): {ema:.2f}")
             print(f"  Diff: {abs(sma - ema):.2f}")
 
+    def test_calculate_adjusted_sma(self):
+        """Test adjusted SMA calculations for AAPL stock data."""
+        # Get the most recent AAPL interval
+        latest_interval = self.db.session.query(TimeInterval)\
+            .join(Symbol)\
+            .filter(Symbol.symbol == 'AAPL')\
+            .order_by(TimeInterval.start_time.desc())\
+            .first()
+            
+        self.assertIsNotNone(latest_interval, "No AAPL data found in database")
+        
+        # Test periods
+        periods = [5, 10, 20]
+        
+        print("\nTesting AAPL Adjusted SMA:")
+        print("-" * 50)
+        
+        for period in periods:
+            # Calculate regular SMA and adjusted SMA for volume
+            regular_sma = self.ta.calculate_sma(
+                'V',  # Volume
+                period=period,
+                ticker_time=1,  # 1-minute intervals
+                timeinterval_id=latest_interval.id
+            )
+            
+            adjusted_sma = self.ta.calculate_adjusted_sma(
+                'V',  # Volume
+                period=period,
+                ticker_time=1,  # 1-minute intervals
+                timeinterval_id=latest_interval.id
+            )
+            
+            self.assertIsNotNone(regular_sma)
+            self.assertIsNotNone(adjusted_sma)
+            self.assertIsInstance(regular_sma, float)
+            self.assertIsInstance(adjusted_sma, float)
+            
+            # The adjusted SMA should be different from regular SMA
+            self.assertNotEqual(regular_sma, adjusted_sma)
+            
+            print(f"\nPeriod: {period} intervals")
+            print(f"Regular SMA: {regular_sma:.2f}")
+            print(f"Adjusted SMA: {adjusted_sma:.2f}")
+            print(f"Difference: {abs(regular_sma - adjusted_sma):.2f}")
+            
+            # Test with different time intervals
+            print("\nTesting different time intervals:")
+            intervals = [1, 5, 15]  # 1-min, 5-min, 15-min
+            for interval in intervals:
+                adjusted_sma = self.ta.calculate_adjusted_sma(
+                    'V',  # Volume
+                    period=period,
+                    ticker_time=interval,
+                    timeinterval_id=latest_interval.id
+                )
+                self.assertIsNotNone(adjusted_sma)
+                print(f"{interval}-minute interval:")
+                print(f"  Adjusted SMA({period}): {adjusted_sma:.2f}")
+
 if __name__ == '__main__':
     unittest.main() 
