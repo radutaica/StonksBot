@@ -154,5 +154,64 @@ class TestTechnicalAnalysis(unittest.TestCase):
                 print(f"{interval}-minute interval:")
                 print(f"  Adjusted SMA({period}): {adjusted_sma:.2f}")
 
+
+    def test_stdv(self):
+        """Test standard deviation calculations for AAPL stock data."""
+        # Get the most recent AAPL interval
+        latest_interval = self.db.session.query(TimeInterval)\
+            .join(Symbol)\
+            .filter(Symbol.symbol == 'AAPL')\
+            .order_by(TimeInterval.start_time.desc())\
+            .first()
+            
+        self.assertIsNotNone(latest_interval, "No AAPL data found in database")
+        
+        # Test periods
+        periods = [5, 10, 20]
+        metrics = ['O', 'H', 'L', 'C', 'V']  # Test all available metrics
+        
+        print("\nTesting AAPL Standard Deviation:")
+        print("-" * 50)
+        
+        for period in periods:
+            print(f"\nPeriod: {period} intervals")
+            for metric in metrics:
+                # Calculate STDV
+                stdv = self.ta.calculate_stdv(
+                    metric,
+                    period=period,
+                    ticker_time=1,  # 1-minute intervals
+                    timeinterval_id=latest_interval.id
+                )
+                
+                self.assertIsNotNone(stdv)
+                self.assertIsInstance(stdv, float)
+                self.assertGreaterEqual(stdv, 0)  # STDV should always be non-negative
+                
+                # Print the results
+                metric_names = {
+                    'O': 'Open',
+                    'H': 'High',
+                    'L': 'Low',
+                    'C': 'Close',
+                    'V': 'Volume'
+                }
+                print(f"{metric_names[metric]}:")
+                print(f"  STDV: {stdv:.2f}")
+        
+        # Test with different time intervals
+        print("\nTesting different time intervals:")
+        intervals = [1, 5, 15]  # 1-min, 5-min, 15-min
+        for interval in intervals:
+            stdv = self.ta.calculate_stdv(
+                'C',  # Using close price
+                period=20,
+                ticker_time=interval,
+                timeinterval_id=latest_interval.id
+            )
+            self.assertIsNotNone(stdv)
+            print(f"{interval}-minute interval:")
+            print(f"  STDV(20): {stdv:.2f}")
+
 if __name__ == '__main__':
     unittest.main() 

@@ -245,6 +245,89 @@ class TechnicalAnalysis:
         # Apply the formula: [sum - max - min]/(n-2)
         return (total_sum - max_value - min_value) / (period - 2)
 
+    def calculate_stdv(
+        self,
+        type: Literal['O', 'H', 'L', 'C', 'V'],
+        period: int,
+        ticker_time: int,
+        timeinterval_id: int
+    ) -> float:
+        """
+        Calculate Standard Deviation (STDV) for a given symbol and time interval.
+        Standard Deviation measures the amount of variation or dispersion in a set of values.
+        
+        Formula: σ = √(Σ(x - μ)² / n)
+        where:
+        - σ (sigma) is the standard deviation
+        - x is each value in the dataset
+        - μ (mu) is the mean of the dataset
+        - n is the number of values
+        
+        Args:
+            type (Literal['O', 'H', 'L', 'C', 'V']): Type of data to calculate STDV for
+                O = Open, H = High, L = Low, C = Close, V = Volume
+            period (int): Number of periods/bars to calculate the standard deviation
+            ticker_time (int): Time interval in minutes (e.g., 5 for 5-minute intervals)
+            timeinterval_id (int): The starting point (time interval ID) from where to calculate
+            
+        Returns:
+            float: The calculated standard deviation value, or None if not enough data points
+            
+        Example:
+            >>> ta = TechnicalAnalysis()
+            >>> stdv = ta.calculate_stdv('C', 20, 5, 1000)
+            >>> print(stdv)
+            2.5
+        """
+        # Get the current time interval
+        current_interval = self.db.session.query(TimeInterval).filter(
+            TimeInterval.id == timeinterval_id
+        ).first()
+        
+        if not current_interval:
+            return None
+        
+        # Calculate the start time for the period
+        start_time = current_interval.start_time - timedelta(minutes=ticker_time * period)
+        
+        # Query the required time intervals
+        intervals = self.db.session.query(TimeInterval).filter(
+            and_(
+                TimeInterval.symbol_id == current_interval.symbol_id,
+                TimeInterval.start_time >= start_time,
+                TimeInterval.start_time <= current_interval.start_time,
+                extract('minute', TimeInterval.start_time) % ticker_time == 0
+            )
+        ).order_by(TimeInterval.start_time.desc()).limit(period).all()
+        
+        if len(intervals) < period:
+            return None
+        
+        # Extract the values based on the type
+        values = []
+        for interval in intervals:
+            if type == 'O':
+                values.append(interval.open)
+            elif type == 'H':
+                values.append(interval.high)
+            elif type == 'L':
+                values.append(interval.low)
+            elif type == 'C':
+                values.append(interval.close)
+            elif type == 'V':
+                values.append(interval.volume)
+        
+        # Calculate the mean (μ)
+        mean = sum(values) / len(values)
+        
+        # Calculate the sum of squared differences from mean
+        squared_diff_sum = sum((x - mean) ** 2 for x in values)
+        
+        # Calculate standard deviation
+        stdv = (squared_diff_sum / len(values)) ** 0.5
+        
+        return stdv
+
 def setup_test_environment():
     """
     Set up the test environment with necessary configurations.
