@@ -2,10 +2,11 @@
 Module for calculating volume breakouts based on adjusted volume SMA.
 """
 from typing import List, Dict
-from datetime import datetime
+from datetime import datetime, timedelta
 import pandas as pd
 from database import Database, TimeInterval, Symbol
 from tests.utils.test_utils import TechnicalAnalysis
+from sqlalchemy import extract, and_
 
 def find_volume_breakouts(
     ticker_time: int = 5,
@@ -32,50 +33,59 @@ def find_volume_breakouts(
         breakouts = []
         
         for (symbol_id,) in symbols:
-            # Get symbol name
             symbol = db.session.query(Symbol).filter(Symbol.id == symbol_id).first()
             if not symbol:
                 continue
-                
-            # Get all time intervals for this symbol, ordered by time
+
+            # Get all 1-minute intervals for this symbol, ordered by time (enough to build all 5-min bars)
+            min_needed = (lookback_period + 50) * ticker_time  # 50 is a buffer for recent bars
             intervals = db.session.query(TimeInterval).filter(
                 TimeInterval.symbol_id == symbol_id
-            ).order_by(TimeInterval.start_time.asc()).all()
-            
-            if not intervals:
+            ).order_by(TimeInterval.start_time.asc()).limit(min_needed).all()
+            if not intervals or len(intervals) < ticker_time * (lookback_period + 1):
                 continue
-            
-            # Process each interval (except the first lookback_period ones)
-            for i in range(lookback_period, len(intervals)):
-                current_interval = intervals[i]
-                
-                # Calculate adjusted volume SMA for the lookback period
-                adjusted_volume_sma = ta.calculate_adjusted_sma(
-                    type='V',
-                    period=lookback_period,
-                    ticker_time=ticker_time,
-                    timeinterval_id=current_interval.id
-                )
-                
-                if not adjusted_volume_sma or adjusted_volume_sma == 0:
+
+            # Build 5-minute bars from 1-minute intervals
+            bars = []
+            for i in range(0, len(intervals) - ticker_time + 1):
+                bar_start = intervals[i].start_time
+                if bar_start.minute % ticker_time != 0:
                     continue
-                
-                # Calculate volume ratio
-                volume_ratio = current_interval.volume / adjusted_volume_sma
-                
-                # Check if the volume ratio exceeds the threshold
-                if volume_ratio > volume_ratio_threshold:
+                bar_slice = intervals[i:i + ticker_time]
+                bar = {
+                    'start_time': bar_start,
+                    'open': bar_slice[0].open,
+                    'high': max(x.high for x in bar_slice),
+                    'low': min(x.low for x in bar_slice),
+                    'close': bar_slice[-1].close,
+                    'volume': sum(x.volume for x in bar_slice)
+                }
+                bars.append(bar)
+
+            # Now process each 5-minute bar after the first lookback_period
+            for i in range(lookback_period, len(bars)):
+                current_bar = bars[i]
+                prev_bars = bars[i - lookback_period:i]
+                prev_volumes = [b['volume'] for b in prev_bars]
+                if len(prev_volumes) < lookback_period:
+                    continue
+                # Adjusted SMA: remove max and min
+                adj_sma = (sum(prev_volumes) - max(prev_volumes) - min(prev_volumes)) / (lookback_period - 2)
+                if adj_sma == 0:
+                    continue
+                vol_ratio = current_bar['volume'] / adj_sma
+                if vol_ratio > volume_ratio_threshold:
                     breakout_info = {
                         'Symbol': symbol.symbol,
-                        'Date': current_interval.start_time.strftime('%Y-%m-%d'),
-                        'Time': current_interval.start_time.strftime('%H:%M'),
-                        'Volume': round(current_interval.volume, 2),
-                        'Vol SMA': round(adjusted_volume_sma, 2),
-                        'Vol Ratio': round(volume_ratio, 2),
-                        'Open': round(current_interval.open, 2),
-                        'High': round(current_interval.high, 2),
-                        'Low': round(current_interval.low, 2),
-                        'Close': round(current_interval.close, 2)
+                        'Date': current_bar['start_time'].strftime('%Y-%m-%d'),
+                        'Time': current_bar['start_time'].strftime('%H:%M'),
+                        'Volume': round(current_bar['volume'], 2),
+                        'Vol SMA': round(adj_sma, 2),
+                        'Vol Ratio': round(vol_ratio, 2),
+                        'Open': round(current_bar['open'], 2),
+                        'High': round(current_bar['high'], 2),
+                        'Low': round(current_bar['low'], 2),
+                        'Close': round(current_bar['close'], 2)
                     }
                     breakouts.append(breakout_info)
         
