@@ -3,7 +3,7 @@ from database import Database
 import pandas as pd
 import time
 
-API_KEY = 'JCRY20CSQXRDG7ET'  # <-- Replace with your real API key
+API_KEY = 'ANDUERC5B9R0YR80'  # <-- Replace with your real API key
 
 REQUESTS_PER_MIN = 5
 SLEEP_SECONDS = 80
@@ -54,14 +54,8 @@ def fetch_and_save(symbols, intervals=['1min', '5min', '15min'], max_retries=3):
 if __name__ == '__main__':
     # Fetch for the specified symbols
     symbols = [
-        'MTSI',  # MACOM Technology Solutions Holdings Inc.
-        'MASI',  # Masimo Corp.
-        'DRS',   # Leonardo DRS Inc.
-        'INGR',  # Ingredion Inc.
-        'CRS',   # Carpenter Technology Corp.
-        'EPAM',  # EPAM Systems, Inc.
-        'CX',    # CEMEX, S.A.B. de C.V.
-        'AGNC',  # AGNC Investment Corp.
-        'WYNN'   # Wynn Resorts, Limited
+        'LTM',   # LATAM Airlines Group S.A.
+        'BIRK',  # Birkenstock Holding plc
+        'MRNO'   # Murano Global Investments Plc
     ]
     fetch_and_save(symbols) 

@@ -21,18 +21,17 @@ class TechnicalAnalysis:
         self,
         type: Literal['O', 'H', 'L', 'C', 'V'],
         period: int,
-        ticker_time: int,
+        interval_type: Literal['1min', '5min', '15min'],
         timeinterval_id: int
     ) -> float:
         """
         Calculate Simple Moving Average (SMA) for a given symbol and time interval.
         
         Args:
-            symbol (str): Stock symbol (e.g., 'AAPL')
             type (Literal['O', 'H', 'L', 'C', 'V']): Type of data to calculate SMA for
                 O = Open, H = High, L = Low, C = Close, V = Volume
             period (int): Number of periods/bars to calculate the moving average
-            ticker_time (int): Time interval in minutes (e.g., 5 for 5-minute intervals)
+            interval_type (Literal['1min', '5min', '15min']): Type of time interval
             timeinterval_id (int): The starting point (time interval ID) from where to calculate
             
         Returns:
@@ -40,7 +39,7 @@ class TechnicalAnalysis:
             
         Example:
             >>> ta = TechnicalAnalysis()
-            >>> sma = ta.calculate_sma('AAPL', 'C', 20, 5, 1000)
+            >>> sma = ta.calculate_sma('AAPL', 'C', '5min', 1000)
             >>> print(sma)
             150.25
         """
@@ -52,6 +51,9 @@ class TechnicalAnalysis:
         if not current_interval:
             return None
         
+        # Convert interval_type to minutes for time calculation
+        ticker_time = int(interval_type.replace('min', ''))
+        
         # Calculate the start time for the period
         start_time = current_interval.start_time - timedelta(minutes=ticker_time * period)
         
@@ -61,8 +63,7 @@ class TechnicalAnalysis:
                 TimeInterval.symbol_id == current_interval.symbol_id,
                 TimeInterval.start_time >= start_time,
                 TimeInterval.start_time <= current_interval.start_time,
-                # Filter for specific minute intervals using extract
-                extract('minute', TimeInterval.start_time) % ticker_time == 0
+                TimeInterval.interval_type == interval_type
             )
         ).order_by(TimeInterval.start_time.desc()).limit(period).all()
         
@@ -90,36 +91,29 @@ class TechnicalAnalysis:
         self,
         type: Literal['O', 'H', 'L', 'C', 'V'],
         period: int,
-        ticker_time: int,
+        interval_type: Literal['1min', '5min', '15min'],
         timeinterval_id: int
     ) -> float:
         """
-        Calculează Media Mobilă Exponențială (EMA) pentru un simbol și interval de timp dat.
-        
-        EMA este o medie mobilă care dă mai multă importanță prețurilor recente, 
-        făcând-o mai sensibilă la schimbările recente de preț comparativ cu SMA.
-        
-        Formula: EMA = (Preț curent × Multiplier) + (EMA anterior × (1 - Multiplier))
-        unde Multiplier = 2/(period + 1)
+        Calculate Exponential Moving Average (EMA) for a given symbol and time interval.
         
         Args:
-            symbol (str): Simbolul acțiunii (ex: 'AAPL')
-            type (Literal['O', 'H', 'L', 'C', 'V']): Tipul de date pentru care se calculează EMA
-                O = Preț deschidere, H = Preț maxim, L = Preț minim, C = Preț închidere, V = Volum
-            period (int): Numărul de perioade/bare pentru calcularea mediei mobile
-            ticker_time (int): Intervalul de timp în minute (ex: 5 pentru intervale de 5 minute)
-            timeinterval_id (int): Punctul de start (ID interval de timp) de unde se începe calculul
+            type (Literal['O', 'H', 'L', 'C', 'V']): Type of data to calculate EMA for
+                O = Open, H = High, L = Low, C = Close, V = Volume
+            period (int): Number of periods/bars to calculate the moving average
+            interval_type (Literal['1min', '5min', '15min']): Type of time interval
+            timeinterval_id (int): The starting point (time interval ID) from where to calculate
             
         Returns:
-            float: Valoarea EMA calculată, sau None dacă nu sunt suficiente puncte de date
+            float: The calculated EMA value, or None if not enough data points
             
         Example:
             >>> ta = TechnicalAnalysis()
-            >>> ema = ta.calculate_ema('AAPL', 'C', 20, 5, 1000)
+            >>> ema = ta.calculate_ema('AAPL', 'C', '5min', 1000)
             >>> print(ema)
             150.25
         """
-        # Obținem intervalul de timp curent
+        # Get the current time interval
         current_interval = self.db.session.query(TimeInterval).filter(
             TimeInterval.id == timeinterval_id
         ).first()
@@ -127,16 +121,19 @@ class TechnicalAnalysis:
         if not current_interval:
             return None
         
-        # Calculăm timpul de start pentru perioada
+        # Convert interval_type to minutes for time calculation
+        ticker_time = int(interval_type.replace('min', ''))
+        
+        # Calculate the start time for the period
         start_time = current_interval.start_time - timedelta(minutes=ticker_time * period * 2)
         
-        # Interogăm intervalele de timp necesare
+        # Query the required time intervals
         intervals = self.db.session.query(TimeInterval).filter(
             and_(
                 TimeInterval.symbol_id == current_interval.symbol_id,
                 TimeInterval.start_time >= start_time,
                 TimeInterval.start_time <= current_interval.start_time,
-                extract('minute', TimeInterval.start_time) % ticker_time == 0
+                TimeInterval.interval_type == interval_type
             )
         ).order_by(TimeInterval.start_time.asc()).all()
         
@@ -174,7 +171,7 @@ class TechnicalAnalysis:
         self,
         type: Literal['O', 'H', 'L', 'C', 'V'],
         period: int,
-        ticker_time: int,
+        interval_type: Literal['1min', '5min', '15min'],
         timeinterval_id: int
     ) -> float:
         """
@@ -187,7 +184,7 @@ class TechnicalAnalysis:
             type (Literal['O', 'H', 'L', 'C', 'V']): Type of data to calculate adjusted SMA for
                 O = Open, H = High, L = Low, C = Close, V = Volume
             period (int): Number of periods/bars to calculate the moving average
-            ticker_time (int): Time interval in minutes (e.g., 5 for 5-minute intervals)
+            interval_type (Literal['1min', '5min', '15min']): Type of time interval
             timeinterval_id (int): The starting point (time interval ID) from where to calculate
             
         Returns:
@@ -195,7 +192,7 @@ class TechnicalAnalysis:
             
         Example:
             >>> ta = TechnicalAnalysis()
-            >>> adjusted_sma = ta.calculate_adjusted_sma('V', 20, 5, 1000)
+            >>> adjusted_sma = ta.calculate_adjusted_sma('V', 20, '5min', 1000)
             >>> print(adjusted_sma)
             150.25
         """
@@ -207,6 +204,9 @@ class TechnicalAnalysis:
         if not current_interval:
             return None
         
+        # Convert interval_type to minutes for time calculation
+        ticker_time = int(interval_type.replace('min', ''))
+        
         # Calculate the start time for the period
         start_time = current_interval.start_time - timedelta(minutes=ticker_time * period)
         
@@ -216,7 +216,7 @@ class TechnicalAnalysis:
                 TimeInterval.symbol_id == current_interval.symbol_id,
                 TimeInterval.start_time >= start_time,
                 TimeInterval.start_time <= current_interval.start_time,
-                extract('minute', TimeInterval.start_time) % ticker_time == 0
+                TimeInterval.interval_type == interval_type
             )
         ).order_by(TimeInterval.start_time.desc()).limit(period).all()
         
@@ -249,7 +249,7 @@ class TechnicalAnalysis:
         self,
         type: Literal['O', 'H', 'L', 'C', 'V'],
         period: int,
-        ticker_time: int,
+        interval_type: Literal['1min', '5min', '15min'],
         timeinterval_id: int
     ) -> float:
         """
@@ -267,7 +267,7 @@ class TechnicalAnalysis:
             type (Literal['O', 'H', 'L', 'C', 'V']): Type of data to calculate STDV for
                 O = Open, H = High, L = Low, C = Close, V = Volume
             period (int): Number of periods/bars to calculate the standard deviation
-            ticker_time (int): Time interval in minutes (e.g., 5 for 5-minute intervals)
+            interval_type (Literal['1min', '5min', '15min']): Type of time interval
             timeinterval_id (int): The starting point (time interval ID) from where to calculate
             
         Returns:
@@ -275,7 +275,7 @@ class TechnicalAnalysis:
             
         Example:
             >>> ta = TechnicalAnalysis()
-            >>> stdv = ta.calculate_stdv('C', 20, 5, 1000)
+            >>> stdv = ta.calculate_stdv('C', 20, '5min', 1000)
             >>> print(stdv)
             2.5
         """
@@ -287,6 +287,9 @@ class TechnicalAnalysis:
         if not current_interval:
             return None
         
+        # Convert interval_type to minutes for time calculation
+        ticker_time = int(interval_type.replace('min', ''))
+        
         # Calculate the start time for the period
         start_time = current_interval.start_time - timedelta(minutes=ticker_time * period)
         
@@ -296,7 +299,7 @@ class TechnicalAnalysis:
                 TimeInterval.symbol_id == current_interval.symbol_id,
                 TimeInterval.start_time >= start_time,
                 TimeInterval.start_time <= current_interval.start_time,
-                extract('minute', TimeInterval.start_time) % ticker_time == 0
+                TimeInterval.interval_type == interval_type
             )
         ).order_by(TimeInterval.start_time.desc()).limit(period).all()
         
