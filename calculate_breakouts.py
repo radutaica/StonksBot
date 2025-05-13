@@ -32,63 +32,58 @@ def find_volume_breakouts(
         symbols = db.session.query(TimeInterval.symbol_id).distinct().all()
         breakouts = []
         
+        print("\nSymbol Analysis:")
+        print("-" * 50)
+        print(f"{'Symbol':<10} {'Adj SMA':>12} {'Volume':>12} {'Vol Ratio':>12}")
+        print("-" * 50)
+        
         for (symbol_id,) in symbols:
             symbol = db.session.query(Symbol).filter(Symbol.id == symbol_id).first()
             if not symbol:
                 continue
 
-            # Get all 1-minute intervals for this symbol, ordered by time (enough to build all 5-min bars)
-            min_needed = (lookback_period + 50) * ticker_time  # 50 is a buffer for recent bars
-            intervals = db.session.query(TimeInterval).filter(
-                TimeInterval.symbol_id == symbol_id
-            ).order_by(TimeInterval.start_time.asc()).limit(min_needed).all()
-            if not intervals or len(intervals) < ticker_time * (lookback_period + 1):
+            # Get the most recent interval for this symbol
+            latest_interval = db.session.query(TimeInterval).filter(
+                TimeInterval.symbol_id == symbol_id,
+                TimeInterval.interval_type == f'{ticker_time}min',
+                TimeInterval.end_time < datetime(2025, 4, 10, 10, 10, 0)  # Less than or equal to target time
+            ).order_by(TimeInterval.end_time.desc()).first()  # Order by end_time descending to get closest one
+            
+            if not latest_interval:
                 continue
 
-            # Build 5-minute bars from 1-minute intervals
-            bars = []
-            for i in range(0, len(intervals) - ticker_time + 1):
-                bar_start = intervals[i].start_time
-                if bar_start.minute % ticker_time != 0:
-                    continue
-                bar_slice = intervals[i:i + ticker_time]
-                bar = {
-                    'start_time': bar_start,
-                    'open': bar_slice[0].open,
-                    'high': max(x.high for x in bar_slice),
-                    'low': min(x.low for x in bar_slice),
-                    'close': bar_slice[-1].close,
-                    'volume': sum(x.volume for x in bar_slice)
+            # Calculate adjusted SMA using the TechnicalAnalysis method
+            adj_sma = ta.calculate_adjusted_sma(
+                type='V',
+                period=lookback_period,
+                interval_type=f'{ticker_time}min',
+                timeinterval_id=latest_interval.id
+            )
+            
+            if adj_sma is None or adj_sma == 0:
+                continue
+                
+            vol_ratio = latest_interval.volume / adj_sma
+            
+            # Print all values regardless of threshold
+            print(f"{symbol.symbol:<10} {adj_sma:>12,.2f} {latest_interval.volume:>12,.2f} {vol_ratio:>12,.2f}")
+            
+            if vol_ratio > volume_ratio_threshold:
+                breakout_info = {
+                    'Symbol': symbol.symbol,
+                    'Date': latest_interval.start_time.strftime('%Y-%m-%d'),
+                    'Time': latest_interval.start_time.strftime('%H:%M'),
+                    'Volume': round(latest_interval.volume, 2),
+                    'Vol SMA': round(adj_sma, 2),
+                    'Vol Ratio': round(vol_ratio, 2),
+                    'Open': round(latest_interval.open, 2),
+                    'High': round(latest_interval.high, 2),
+                    'Low': round(latest_interval.low, 2),
+                    'Close': round(latest_interval.close, 2)
                 }
-                bars.append(bar)
-
-            # Now process each 5-minute bar after the first lookback_period
-            for i in range(lookback_period, len(bars)):
-                current_bar = bars[i]
-                prev_bars = bars[i - lookback_period:i]
-                prev_volumes = [b['volume'] for b in prev_bars]
-                if len(prev_volumes) < lookback_period:
-                    continue
-                # Adjusted SMA: remove max and min
-                adj_sma = (sum(prev_volumes) - max(prev_volumes) - min(prev_volumes)) / (lookback_period - 2)
-                if adj_sma == 0:
-                    continue
-                vol_ratio = current_bar['volume'] / adj_sma
-                if vol_ratio > volume_ratio_threshold:
-                    breakout_info = {
-                        'Symbol': symbol.symbol,
-                        'Date': current_bar['start_time'].strftime('%Y-%m-%d'),
-                        'Time': current_bar['start_time'].strftime('%H:%M'),
-                        'Volume': round(current_bar['volume'], 2),
-                        'Vol SMA': round(adj_sma, 2),
-                        'Vol Ratio': round(vol_ratio, 2),
-                        'Open': round(current_bar['open'], 2),
-                        'High': round(current_bar['high'], 2),
-                        'Low': round(current_bar['low'], 2),
-                        'Close': round(current_bar['close'], 2)
-                    }
-                    breakouts.append(breakout_info)
+                breakouts.append(breakout_info)
         
+        print("-" * 50)
         return breakouts
     
     finally:
