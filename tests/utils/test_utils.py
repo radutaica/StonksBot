@@ -22,10 +22,12 @@ class TechnicalAnalysis:
         type: Literal['O', 'H', 'L', 'C', 'V'],
         period: int,
         interval_type: Literal['1min', '5min', '15min'],
-        timeinterval_id: int
+        timeinterval_id: int,
+        target_time: datetime = None
     ) -> float:
         """
         Calculate Simple Moving Average (SMA) for a given symbol and time interval.
+        Uses a counter to find the required number of intervals, regardless of time gaps.
         
         Args:
             type (Literal['O', 'H', 'L', 'C', 'V']): Type of data to calculate SMA for
@@ -33,15 +35,10 @@ class TechnicalAnalysis:
             period (int): Number of periods/bars to calculate the moving average
             interval_type (Literal['1min', '5min', '15min']): Type of time interval
             timeinterval_id (int): The starting point (time interval ID) from where to calculate
+            target_time (datetime, optional): The target time to look back from. If None, uses the current interval's time.
             
         Returns:
             float: The calculated SMA value, or None if not enough data points
-            
-        Example:
-            >>> ta = TechnicalAnalysis()
-            >>> sma = ta.calculate_sma('AAPL', 'C', '5min', 1000)
-            >>> print(sma)
-            150.25
         """
         # Get the current time interval
         current_interval = self.db.session.query(TimeInterval).filter(
@@ -51,21 +48,20 @@ class TechnicalAnalysis:
         if not current_interval:
             return None
         
-        # Convert interval_type to minutes for time calculation
-        ticker_time = int(interval_type.replace('min', ''))
+        # Use target_time if provided, otherwise use current interval's time
+        end_time = target_time if target_time else current_interval.start_time
         
-        # Calculate the start time for the period
-        start_time = current_interval.start_time - timedelta(minutes=ticker_time * period)
-        
-        # Query the required time intervals
+        # Query intervals before the end_time, ordered by time descending
         intervals = self.db.session.query(TimeInterval).filter(
             and_(
                 TimeInterval.symbol_id == current_interval.symbol_id,
-                TimeInterval.start_time >= start_time,
-                TimeInterval.start_time <= current_interval.start_time,
+                TimeInterval.start_time <= end_time,
                 TimeInterval.interval_type == interval_type
             )
-        ).order_by(TimeInterval.start_time.desc()).limit(period).all()
+        ).order_by(TimeInterval.start_time.desc()).all()
+        
+        # Take only the first 'period' number of intervals
+        intervals = intervals[:period]
         
         if len(intervals) < period:
             return None
@@ -92,10 +88,12 @@ class TechnicalAnalysis:
         type: Literal['O', 'H', 'L', 'C', 'V'],
         period: int,
         interval_type: Literal['1min', '5min', '15min'],
-        timeinterval_id: int
+        timeinterval_id: int,
+        target_time: datetime = None
     ) -> float:
         """
         Calculate Exponential Moving Average (EMA) for a given symbol and time interval.
+        Uses a counter to find the required number of intervals, regardless of time gaps.
         
         Args:
             type (Literal['O', 'H', 'L', 'C', 'V']): Type of data to calculate EMA for
@@ -103,15 +101,10 @@ class TechnicalAnalysis:
             period (int): Number of periods/bars to calculate the moving average
             interval_type (Literal['1min', '5min', '15min']): Type of time interval
             timeinterval_id (int): The starting point (time interval ID) from where to calculate
+            target_time (datetime, optional): The target time to look back from. If None, uses the current interval's time.
             
         Returns:
             float: The calculated EMA value, or None if not enough data points
-            
-        Example:
-            >>> ta = TechnicalAnalysis()
-            >>> ema = ta.calculate_ema('AAPL', 'C', '5min', 1000)
-            >>> print(ema)
-            150.25
         """
         # Get the current time interval
         current_interval = self.db.session.query(TimeInterval).filter(
@@ -121,26 +114,25 @@ class TechnicalAnalysis:
         if not current_interval:
             return None
         
-        # Convert interval_type to minutes for time calculation
-        ticker_time = int(interval_type.replace('min', ''))
+        # Use target_time if provided, otherwise use current interval's time
+        end_time = target_time if target_time else current_interval.start_time
         
-        # Calculate the start time for the period
-        start_time = current_interval.start_time - timedelta(minutes=ticker_time * period * 2)
-        
-        # Query the required time intervals
+        # Query intervals before the end_time, ordered by time descending
         intervals = self.db.session.query(TimeInterval).filter(
             and_(
                 TimeInterval.symbol_id == current_interval.symbol_id,
-                TimeInterval.start_time >= start_time,
-                TimeInterval.start_time <= current_interval.start_time,
+                TimeInterval.start_time <= end_time,
                 TimeInterval.interval_type == interval_type
             )
-        ).order_by(TimeInterval.start_time.asc()).all()
+        ).order_by(TimeInterval.start_time.desc()).all()
+        
+        # Take only the first 'period' number of intervals
+        intervals = intervals[:period]
         
         if len(intervals) < period:
             return None
         
-        # Extragem valorile în funcție de tip
+        # Extract the values based on the type
         values = []
         for interval in intervals:
             if type == 'O':
@@ -154,15 +146,14 @@ class TechnicalAnalysis:
             elif type == 'V':
                 values.append(interval.volume)
         
-        # Calculăm factorul de multiplicare (2/(period + 1))
+        # Calculate the multiplier (2/(period + 1))
         multiplier = 2 / (period + 1)
         
-        # Calculăm SMA pentru prima perioadă ca valoare inițială pentru EMA
-        sma = sum(values[:period]) / period
+        # Calculate SMA for the first period as initial EMA value
+        ema = sum(values) / len(values)
         
-        # Calculăm EMA folosind formula corectă
-        ema = sma
-        for i in range(period, len(values)):
+        # Calculate EMA using the formula
+        for i in range(len(values)):
             ema = (values[i] * multiplier) + (ema * (1 - multiplier))
             
         return ema
@@ -172,11 +163,13 @@ class TechnicalAnalysis:
         type: Literal['O', 'H', 'L', 'C', 'V'],
         period: int,
         interval_type: Literal['1min', '5min', '15min'],
-        timeinterval_id: int
+        timeinterval_id: int,
+        target_time: datetime = None
     ) -> float:
         """
         Calculate Adjusted Simple Moving Average (SMA) for a given symbol and time interval.
         This is particularly useful for volume analysis as it removes outliers.
+        Uses a counter to find the required number of intervals, regardless of time gaps.
         
         Formula: [sum(V1, V2,...Vi,...,Vn) - maxVi - minVi]/(n-2)
         
@@ -186,15 +179,10 @@ class TechnicalAnalysis:
             period (int): Number of periods/bars to calculate the moving average
             interval_type (Literal['1min', '5min', '15min']): Type of time interval
             timeinterval_id (int): The starting point (time interval ID) from where to calculate
+            target_time (datetime, optional): The target time to look back from. If None, uses the current interval's time.
             
         Returns:
             float: The calculated adjusted SMA value, or None if not enough data points
-            
-        Example:
-            >>> ta = TechnicalAnalysis()
-            >>> adjusted_sma = ta.calculate_adjusted_sma('V', 20, '5min', 1000)
-            >>> print(adjusted_sma)
-            150.25
         """
         # Get the current time interval
         current_interval = self.db.session.query(TimeInterval).filter(
@@ -204,23 +192,23 @@ class TechnicalAnalysis:
         if not current_interval:
             return None
         
-        # Convert interval_type to minutes for time calculation
-        ticker_time = int(interval_type.replace('min', ''))
+        # Use target_time if provided, otherwise use current interval's time
+        end_time = target_time if target_time else current_interval.start_time
         
-        # Calculate the start time for the period
-        start_time = current_interval.start_time - timedelta(minutes=ticker_time * period)
-        
-        # Query the required time intervals
+        # Query intervals before the end_time, ordered by time descending
         intervals = self.db.session.query(TimeInterval).filter(
             and_(
                 TimeInterval.symbol_id == current_interval.symbol_id,
-                TimeInterval.start_time >= start_time,
-                TimeInterval.start_time <= current_interval.start_time,
+                TimeInterval.start_time <= end_time,
                 TimeInterval.interval_type == interval_type
             )
-        ).order_by(TimeInterval.start_time.desc()).limit(period).all()
+        ).order_by(TimeInterval.start_time.desc()).all()
         
-        if len(intervals) < period:
+        # Take only the first 'period' number of intervals
+        intervals = intervals[:period]
+        
+        # If we have at least 3 intervals (minimum needed for adjusted SMA), proceed
+        if len(intervals) < 3:
             return None
         
         # Extract the values based on the type
@@ -243,18 +231,19 @@ class TechnicalAnalysis:
         min_value = min(values)
         
         # Apply the formula: [sum - max - min]/(n-2)
-        return (total_sum - max_value - min_value) / (period - 2)
+        return (total_sum - max_value - min_value) / (len(values) - 2)
 
     def calculate_stdv(
         self,
         type: Literal['O', 'H', 'L', 'C', 'V'],
         period: int,
         interval_type: Literal['1min', '5min', '15min'],
-        timeinterval_id: int
+        timeinterval_id: int,
+        target_time: datetime = None
     ) -> float:
         """
         Calculate Standard Deviation (STDV) for a given symbol and time interval.
-        Standard Deviation measures the amount of variation or dispersion in a set of values.
+        Uses a counter to find the required number of intervals, regardless of time gaps.
         
         Formula: σ = √(Σ(x - μ)² / n)
         where:
@@ -269,15 +258,10 @@ class TechnicalAnalysis:
             period (int): Number of periods/bars to calculate the standard deviation
             interval_type (Literal['1min', '5min', '15min']): Type of time interval
             timeinterval_id (int): The starting point (time interval ID) from where to calculate
+            target_time (datetime, optional): The target time to look back from. If None, uses the current interval's time.
             
         Returns:
             float: The calculated standard deviation value, or None if not enough data points
-            
-        Example:
-            >>> ta = TechnicalAnalysis()
-            >>> stdv = ta.calculate_stdv('C', 20, '5min', 1000)
-            >>> print(stdv)
-            2.5
         """
         # Get the current time interval
         current_interval = self.db.session.query(TimeInterval).filter(
@@ -287,21 +271,20 @@ class TechnicalAnalysis:
         if not current_interval:
             return None
         
-        # Convert interval_type to minutes for time calculation
-        ticker_time = int(interval_type.replace('min', ''))
+        # Use target_time if provided, otherwise use current interval's time
+        end_time = target_time if target_time else current_interval.start_time
         
-        # Calculate the start time for the period
-        start_time = current_interval.start_time - timedelta(minutes=ticker_time * period)
-        
-        # Query the required time intervals
+        # Query intervals before the end_time, ordered by time descending
         intervals = self.db.session.query(TimeInterval).filter(
             and_(
                 TimeInterval.symbol_id == current_interval.symbol_id,
-                TimeInterval.start_time >= start_time,
-                TimeInterval.start_time <= current_interval.start_time,
+                TimeInterval.start_time <= end_time,
                 TimeInterval.interval_type == interval_type
             )
-        ).order_by(TimeInterval.start_time.desc()).limit(period).all()
+        ).order_by(TimeInterval.start_time.desc()).all()
+        
+        # Take only the first 'period' number of intervals
+        intervals = intervals[:period]
         
         if len(intervals) < period:
             return None
